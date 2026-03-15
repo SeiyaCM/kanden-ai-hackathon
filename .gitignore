@@ -1,1 +1,3 @@
 data/base_images/
+*.env
+local.env

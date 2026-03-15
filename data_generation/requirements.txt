@@ -1,0 +1,8 @@
+huggingface_hub
+python-dotenv
+torch
+Pillow
+diffusers
+controlnet_aux
+accelerate
+transformers
