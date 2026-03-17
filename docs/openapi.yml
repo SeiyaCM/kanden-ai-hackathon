@@ -1,0 +1,355 @@
+openapi: "3.0.1"
+info:
+  title: "空間AIブレイン - 疲労度検知API"
+  description: |
+    デバイス（DGX Spark）からエンジニアの疲労度データを受信するAPI。
+    カメラ画像（姿勢推定）と音声データ（ネガティブ発言検知）をもとに算出した
+    疲労度スコアを受け取り、空間制御システムへ連携する。
+  version: "1.0.0"
+  contact:
+    name: "NANIWA-Factory"
+    email: "support@naniwa-factory.example.com"
+
+tags:
+  - name: "fatigue"
+    description: "エンジニアの疲労度検知・管理"
+
+servers:
+  - url: "https://{api-id}.execute-api.{region}.amazonaws.com/{stage}"
+    variables:
+      api-id:
+        default: "your-api-id"
+      region:
+        default: "ap-northeast-1"
+      stage:
+        default: "v1"
+
+paths:
+  /fatigue:
+    post:
+      summary: "疲労度データ送信"
+      description: |
+        デバイスから収集したカメラ画像と音声データをもとに算出した
+        エンジニアの疲労度スコアを送信する。
+        受信後、LLMによる空間制御判断（エアコン・照明・サーキュレーター）に利用される。
+      operationId: "postFatigue"
+      tags:
+        - "fatigue"
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FatiguePayload"
+            examples:
+              highFatigue:
+                summary: "高疲労状態の例"
+                value:
+                  device_id: "dgx-spark-001"
+                  user_id: "engineer-001"
+                  timestamp: "2026-03-17T10:30:00+09:00"
+                  fatigue_score: 0.85
+                  modalities:
+                    camera:
+                      score: 0.90
+                      detected_posture: "head_down"
+                    audio:
+                      score: 0.80
+                      detected_keywords: ["疲れた", "わからん"]
+              normalState:
+                summary: "通常状態の例"
+                value:
+                  device_id: "dgx-spark-001"
+                  user_id: "engineer-001"
+                  timestamp: "2026-03-17T09:00:00+09:00"
+                  fatigue_score: 0.15
+                  modalities:
+                    camera:
+                      score: 0.10
+                      detected_posture: "upright"
+                    audio:
+                      score: 0.20
+                      detected_keywords: []
+      responses:
+        "200":
+          description: "疲労度データを正常に受信した"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FatigueResponse"
+        "400":
+          description: "リクエストボディが不正"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Bad Request"
+                message: "fatigue_score must be between 0.0 and 1.0"
+        "401":
+          description: "認証エラー（APIキー不正・未指定）"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Unauthorized"
+                message: "Missing or invalid API key"
+        "500":
+          description: "サーバー内部エラー"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Internal Server Error"
+                message: "An unexpected error occurred"
+      x-amazon-apigateway-integration:
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FatigueLambdaArn}/invocations"
+        passthroughBehavior: "when_no_match"
+
+  /fatigue/history:
+    get:
+      summary: "疲労度履歴取得"
+      description: "指定ユーザー・期間の疲労度履歴を取得する。空間制御の傾向分析に利用。"
+      operationId: "getFatigueHistory"
+      tags:
+        - "fatigue"
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          description: "ユーザーID"
+          schema:
+            type: string
+            example: "engineer-001"
+        - name: from
+          in: query
+          required: false
+          description: "取得開始日時（ISO 8601形式）"
+          schema:
+            type: string
+            format: date-time
+            example: "2026-03-17T00:00:00+09:00"
+        - name: to
+          in: query
+          required: false
+          description: "取得終了日時（ISO 8601形式）"
+          schema:
+            type: string
+            format: date-time
+            example: "2026-03-17T23:59:59+09:00"
+        - name: limit
+          in: query
+          required: false
+          description: "取得件数上限（デフォルト: 100）"
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        "200":
+          description: "疲労度履歴の取得成功"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FatigueHistoryResponse"
+        "400":
+          description: "クエリパラメータが不正"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: "認証エラー"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-amazon-apigateway-integration:
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FatigueLambdaArn}/invocations"
+        passthroughBehavior: "when_no_match"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: "apiKey"
+      in: "header"
+      name: "x-api-key"
+
+  schemas:
+    FatiguePayload:
+      type: object
+      required:
+        - device_id
+        - user_id
+        - timestamp
+        - fatigue_score
+      properties:
+        device_id:
+          type: string
+          description: "送信元デバイスのID（例: DGX Sparkの識別子）"
+          example: "dgx-spark-001"
+        user_id:
+          type: string
+          description: "対象エンジニアのID"
+          example: "engineer-001"
+        timestamp:
+          type: string
+          format: date-time
+          description: "疲労度を検知した日時（ISO 8601形式）"
+          example: "2026-03-17T10:30:00+09:00"
+        fatigue_score:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: |
+            統合疲労度スコア。
+            0.0 = 疲労なし（元気な状態）
+            1.0 = 極度の疲労状態
+          example: 0.75
+        modalities:
+          type: object
+          description: "各モダリティ別の詳細スコア（任意）"
+          properties:
+            camera:
+              $ref: "#/components/schemas/CameraModality"
+            audio:
+              $ref: "#/components/schemas/AudioModality"
+        metadata:
+          type: object
+          description: "追加メタデータ（任意）"
+          additionalProperties: true
+          example:
+            model_version: "1.2.0"
+            inference_time_ms: 45
+
+    CameraModality:
+      type: object
+      description: "カメラ（姿勢推定）による疲労度情報"
+      properties:
+        score:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: "カメラ単体の疲労スコア"
+          example: 0.80
+        detected_posture:
+          type: string
+          description: "検出された姿勢ラベル"
+          enum:
+            - upright
+            - slouching
+            - head_down
+            - head_resting
+            - unknown
+          example: "head_down"
+        confidence:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: "姿勢推定の信頼度"
+          example: 0.92
+
+    AudioModality:
+      type: object
+      description: "音声データ（ネガティブ発言検知）による疲労度情報"
+      properties:
+        score:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: "音声単体の疲労スコア"
+          example: 0.70
+        detected_keywords:
+          type: array
+          description: "検出されたネガティブキーワード一覧"
+          items:
+            type: string
+          example: ["疲れた", "わからん", "もう無理"]
+        transcription:
+          type: string
+          description: "faster-whisperによる音声テキスト（任意）"
+          example: "この問題、全然わからん。もう疲れた。"
+
+    FatigueResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["accepted"]
+          description: "受信ステータス"
+          example: "accepted"
+        record_id:
+          type: string
+          description: "受信レコードの一意ID"
+          example: "rec-20260317-abcdef12"
+        timestamp:
+          type: string
+          format: date-time
+          description: "サーバー受信日時"
+          example: "2026-03-17T10:30:01+09:00"
+        fatigue_score:
+          type: number
+          format: float
+          description: "受信した疲労度スコア（確認用）"
+          example: 0.75
+
+    FatigueHistoryResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          example: "engineer-001"
+        total:
+          type: integer
+          description: "該当レコード総数"
+          example: 42
+        records:
+          type: array
+          items:
+            type: object
+            properties:
+              record_id:
+                type: string
+                example: "rec-20260317-abcdef12"
+              timestamp:
+                type: string
+                format: date-time
+                example: "2026-03-17T10:30:00+09:00"
+              fatigue_score:
+                type: number
+                format: float
+                example: 0.75
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: "エラー種別"
+          example: "Bad Request"
+        message:
+          type: string
+          description: "エラーの詳細メッセージ"
+          example: "fatigue_score must be between 0.0 and 1.0"
+        request_id:
+          type: string
+          description: "トレース用リクエストID"
+          example: "7b5dc8a3-1234-5678-abcd-ef0123456789"
