@@ -112,72 +112,6 @@ paths:
         uri: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FatigueLambdaArn}/invocations"
         passthroughBehavior: "when_no_match"
 
-  /fatigue/history:
-    get:
-      summary: "疲労度履歴取得"
-      description: "指定ユーザー・期間の疲労度履歴を取得する。空間制御の傾向分析に利用。"
-      operationId: "getFatigueHistory"
-      tags:
-        - "fatigue"
-      security:
-        - ApiKeyAuth: []
-      parameters:
-        - name: user_id
-          in: query
-          required: true
-          description: "ユーザーID"
-          schema:
-            type: string
-            example: "engineer-001"
-        - name: from
-          in: query
-          required: false
-          description: "取得開始日時（ISO 8601形式）"
-          schema:
-            type: string
-            format: date-time
-            example: "2026-03-17T00:00:00+09:00"
-        - name: to
-          in: query
-          required: false
-          description: "取得終了日時（ISO 8601形式）"
-          schema:
-            type: string
-            format: date-time
-            example: "2026-03-17T23:59:59+09:00"
-        - name: limit
-          in: query
-          required: false
-          description: "取得件数上限（デフォルト: 100）"
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 1000
-            default: 100
-      responses:
-        "200":
-          description: "疲労度履歴の取得成功"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FatigueHistoryResponse"
-        "400":
-          description: "クエリパラメータが不正"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: "認証エラー"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      x-amazon-apigateway-integration:
-        type: "aws_proxy"
-        httpMethod: "POST"
-        uri: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FatigueLambdaArn}/invocations"
-        passthroughBehavior: "when_no_match"
 
 components:
   securitySchemes:
@@ -307,33 +241,6 @@ components:
           format: float
           description: "受信した疲労度スコア（確認用）"
           example: 0.75
-
-    FatigueHistoryResponse:
-      type: object
-      properties:
-        user_id:
-          type: string
-          example: "engineer-001"
-        total:
-          type: integer
-          description: "該当レコード総数"
-          example: 42
-        records:
-          type: array
-          items:
-            type: object
-            properties:
-              record_id:
-                type: string
-                example: "rec-20260317-abcdef12"
-              timestamp:
-                type: string
-                format: date-time
-                example: "2026-03-17T10:30:00+09:00"
-              fatigue_score:
-                type: number
-                format: float
-                example: 0.75
 
     ErrorResponse:
       type: object
