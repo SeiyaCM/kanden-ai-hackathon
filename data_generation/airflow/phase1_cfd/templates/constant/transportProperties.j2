@@ -1,0 +1,28 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      transportProperties;
+}
+
+// Air properties at ~20-25 degrees C
+transportModel  Newtonian;
+
+// Kinematic viscosity [m^2/s]
+nu              [0 2 -1 0 0 0 0] 1.5e-05;
+
+// Thermal expansion coefficient [1/K]
+beta            [0 0 0 -1 0 0 0] 3.4e-03;
+
+// Reference temperature [K]
+TRef            [0 0 0 1 0 0 0] {{ t_ref }};
+
+// Laminar Prandtl number
+Pr              [0 0 0 0 0 0 0] 0.71;
+
+// Turbulent Prandtl number
+Prt             [0 0 0 0 0 0 0] 0.85;
+
+// CO2 diffusivity in air [m^2/s]
+DCO2            [0 2 -1 0 0 0 0] 1.6e-05;

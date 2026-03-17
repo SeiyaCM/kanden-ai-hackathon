@@ -1,0 +1,58 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    object      CO2;
+}
+
+dimensions      [0 0 0 0 0 0 0];
+
+internalField   uniform 400e-6;
+
+boundaryField
+{
+    ac_inlet
+    {
+        type            fixedValue;
+        value           uniform 400e-6;
+    }
+
+    ventilation_outlet
+    {
+        type            zeroGradient;
+    }
+
+    {% if window_open %}
+    window
+    {
+        type            fixedValue;
+        value           uniform 400e-6;
+    }
+    {% else %}
+    window
+    {
+        type            zeroGradient;
+    }
+    {% endif %}
+
+    walls
+    {
+        type            zeroGradient;
+    }
+
+    floor
+    {
+        type            zeroGradient;
+    }
+
+    ceiling
+    {
+        type            zeroGradient;
+    }
+
+    furniture
+    {
+        type            zeroGradient;
+    }
+}

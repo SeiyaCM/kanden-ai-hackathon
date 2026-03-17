@@ -1,0 +1,12 @@
+huggingface_hub
+python-dotenv
+torch
+numpy
+numpy-stl
+jinja2
+h5py
+fluidfoam
+pandas
+matplotlib
+nvidia-modulus
+onnx

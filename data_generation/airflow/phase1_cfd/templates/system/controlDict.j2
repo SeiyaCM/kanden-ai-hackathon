@@ -1,0 +1,60 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      controlDict;
+}
+
+application     buoyantSimpleFoam;
+
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         2000;
+
+deltaT          1;
+
+writeControl    timeStep;
+writeInterval   500;
+
+purgeWrite      2;
+
+writeFormat     ascii;
+writePrecision  8;
+writeCompression off;
+
+timeFormat      general;
+timePrecision   6;
+
+runTimeModifiable true;
+
+functions
+{
+    // CO2 scalar transport
+    CO2Transport
+    {
+        type            scalarTransport;
+        libs            ("libsolverFunctionObjects.so");
+        field           CO2;
+        diffusivity     constant 1.6e-05;
+        writeControl    writeTime;
+
+        fvOptions
+        {
+            {% for source in co2_sources %}
+            CO2Source_{{ loop.index0 }}
+            {
+                type            scalarSemiImplicitSource;
+                selectionMode   cellZone;
+                cellZone        humanZone_{{ loop.index0 }};
+                volumeMode      absolute;
+                injectionRateSuSp
+                {
+                    CO2     ({{ source.rate }} 0);
+                }
+            }
+            {% endfor %}
+        }
+    }
+}
