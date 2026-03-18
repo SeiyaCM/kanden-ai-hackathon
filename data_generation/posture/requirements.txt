@@ -1,8 +1,11 @@
 huggingface_hub
 python-dotenv
 torch
+torchvision
 Pillow
 diffusers
 controlnet_aux
 accelerate
 transformers
+scikit-learn
+onnx
