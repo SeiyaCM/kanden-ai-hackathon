@@ -11,7 +11,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "${SCRIPT_DIR}"
+cd /home/team-008/data_generation/airflow/phase2_modulus
 
 echo "=== Starting PINNs surrogate model training ==="
 echo "Start time: $(date)"

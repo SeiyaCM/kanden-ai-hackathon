@@ -11,7 +11,7 @@ FoamFile
     format      ascii;
     class       volScalarField;
     location    "0";
-    object      p;
+    object      p_rgh;
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -20,9 +20,20 @@ internalField   uniform 100000;
 
 boundaryField
 {
-    ".*"
+    ac_inlet
     {
-        type            calculated;
+        type            fixedFluxPressure;
+        value           $internalField;
+    }
+    ventilation_outlet
+    {
+        type            totalPressure;
+        p0              $internalField;
+        value           $internalField;
+    }
+    "(window|floor|ceiling|walls)"
+    {
+        type            fixedFluxPressure;
         value           $internalField;
     }
 }

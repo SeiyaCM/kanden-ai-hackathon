@@ -9,20 +9,11 @@ FoamFile
 {
     version     2.0;
     format      ascii;
-    class       volScalarField;
-    location    "0";
-    object      p;
+    class       uniformDimensionedVectorField;
+    location    "constant";
+    object      g;
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-dimensions      [1 -1 -2 0 0 0 0];
-internalField   uniform 100000;
-
-boundaryField
-{
-    ".*"
-    {
-        type            calculated;
-        value           $internalField;
-    }
-}
+dimensions      [0 1 -2 0 0 0 0];
+value           (0 0 -9.81);

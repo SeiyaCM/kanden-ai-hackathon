@@ -97,7 +97,7 @@ def case_to_arrays(case, norm):
     Input: (x, y, z, ac_speed, ac_temp, window_open, layout_id, ventilation_rate)
     Output: (u, v, w, p, T, CO2)
     """
-    n_cells = len(case["pressure"])
+    n_cells = len(case["coords"])
 
     # Normalize spatial coordinates
     coords_norm = normalize(
@@ -146,9 +146,9 @@ def case_to_arrays(case, norm):
 
     outputs = np.column_stack([
         vel_norm,                    # (n_cells, 3)
-        p_norm.reshape(-1, 1),       # (n_cells, 1)
-        t_norm.reshape(-1, 1),       # (n_cells, 1)
-        co2_norm.reshape(-1, 1),     # (n_cells, 1)
+        np.broadcast_to(np.reshape(p_norm, (-1, 1)), (n_cells, 1)),       # (n_cells, 1)
+        np.broadcast_to(np.reshape(t_norm, (-1, 1)), (n_cells, 1)),       # (n_cells, 1)
+        np.broadcast_to(np.reshape(co2_norm, (-1, 1)), (n_cells, 1)),     # (n_cells, 1)
     ]).astype(np.float32)
 
     return inputs, outputs

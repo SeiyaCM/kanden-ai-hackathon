@@ -35,7 +35,7 @@ decomposePar -force
 
 # Step 3: Run solver (steady-state buoyancy-driven flow)
 echo "--- Running buoyantSimpleFoam (8 processes) ---"
-mpirun -np 8 buoyantSimpleFoam -parallel
+mpirun --oversubscribe -np 8 buoyantSimpleFoam -parallel
 
 # Step 4: Reconstruct parallel result
 echo "--- Running reconstructPar ---"
