@@ -1,0 +1,105 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      blockMeshDict;
+}
+
+scale   1;
+
+// Room dimensions: {{ room_lx }}m x {{ room_ly }}m x {{ room_lz }}m
+// Target ~50K cells
+
+vertices
+(
+    (0     0     0)          // 0
+    ({{ room_lx }} 0     0)          // 1
+    ({{ room_lx }} {{ room_ly }} 0)          // 2
+    (0     {{ room_ly }} 0)          // 3
+    (0     0     {{ room_lz }})      // 4
+    ({{ room_lx }} 0     {{ room_lz }})      // 5
+    ({{ room_lx }} {{ room_ly }} {{ room_lz }})      // 6
+    (0     {{ room_ly }} {{ room_lz }})      // 7
+);
+
+blocks
+(
+    // ~50K cells: nx*ny*nz ~ 50000
+    // For 6x5x2.7m room: 40x33x38 = 50160 cells
+    hex (0 1 2 3 4 5 6 7)
+    ({{ nx }} {{ ny }} {{ nz }})
+    simpleGrading (1 1 1)
+);
+
+edges
+(
+);
+
+boundary
+(
+    ac_inlet
+    {
+        type patch;
+        faces
+        (
+            // AC on the x=0 wall, near ceiling
+            // Defined as sub-face; for simplicity use full x=0 face
+            // and refine with topoSet/createBaffles later, or
+            // use a small patch region.
+            // For prototype: use a portion of x=0 face
+        );
+    }
+
+    ventilation_outlet
+    {
+        type patch;
+        faces
+        (
+            // Exhaust on x=Lx wall
+        );
+    }
+
+    window
+    {
+        type patch;
+        faces
+        (
+            // Window on y=Ly wall
+        );
+    }
+
+    floor
+    {
+        type wall;
+        faces
+        (
+            (0 1 2 3)
+        );
+    }
+
+    ceiling
+    {
+        type wall;
+        faces
+        (
+            (4 5 6 7)
+        );
+    }
+
+    walls
+    {
+        type wall;
+        faces
+        (
+            (0 4 7 3)  // x=0 wall
+            (1 2 6 5)  // x=Lx wall
+            (0 1 5 4)  // y=0 wall
+            (3 7 6 2)  // y=Ly wall
+        );
+    }
+);
+
+mergePatchPairs
+(
+);

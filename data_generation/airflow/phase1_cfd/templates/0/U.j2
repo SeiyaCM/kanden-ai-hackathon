@@ -1,0 +1,58 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volVectorField;
+    object      U;
+}
+
+dimensions      [0 1 -1 0 0 0 0];
+
+internalField   uniform (0 0 0);
+
+boundaryField
+{
+    ac_inlet
+    {
+        type            fixedValue;
+        value           uniform ({{ ac_vx }} {{ ac_vy }} {{ ac_vz }});
+    }
+
+    ventilation_outlet
+    {
+        type            zeroGradient;
+    }
+
+    {% if window_open %}
+    window
+    {
+        type            fixedValue;
+        value           uniform (0 {{ window_inflow_speed }} 0);
+    }
+    {% else %}
+    window
+    {
+        type            noSlip;
+    }
+    {% endif %}
+
+    walls
+    {
+        type            noSlip;
+    }
+
+    floor
+    {
+        type            noSlip;
+    }
+
+    ceiling
+    {
+        type            noSlip;
+    }
+
+    furniture
+    {
+        type            noSlip;
+    }
+}

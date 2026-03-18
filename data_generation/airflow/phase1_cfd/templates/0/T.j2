@@ -1,0 +1,59 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    object      T;
+}
+
+dimensions      [0 0 0 1 0 0 0];
+
+internalField   uniform {{ ambient_temp_k }};
+
+boundaryField
+{
+    ac_inlet
+    {
+        type            fixedValue;
+        value           uniform {{ ac_temp_k }};
+    }
+
+    ventilation_outlet
+    {
+        type            zeroGradient;
+    }
+
+    {% if window_open %}
+    window
+    {
+        type            fixedValue;
+        value           uniform {{ ambient_temp_k }};
+    }
+    {% else %}
+    window
+    {
+        type            zeroGradient;
+    }
+    {% endif %}
+
+    walls
+    {
+        type            zeroGradient;
+    }
+
+    floor
+    {
+        type            zeroGradient;
+    }
+
+    ceiling
+    {
+        type            zeroGradient;
+    }
+
+    furniture
+    {
+        type            fixedGradient;
+        gradient        uniform {{ furniture_heat_flux }};
+    }
+}
