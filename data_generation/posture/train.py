@@ -39,13 +39,23 @@ class PostureDataset(Dataset):
 
     def __getitem__(self, idx):
         record = self.records[idx]
-        img_path = os.path.join(self.image_dir, record["file_name"])
+        
+        # 修正1: "file_name" を "image_path" に変更
+        img_path = os.path.join(self.image_dir, record["image_path"])
         image = Image.open(img_path).convert("RGB")
 
         if self.transform:
             image = self.transform(image)
 
-        label = record["label_id"]
+        # 修正2: "label_id" を "label" に変更し、文字列の場合は数値(0〜3)に変換
+        raw_label = record["label"]
+        label_map = {"01_good": 0, "02_slouch": 1, "03_chin_rest": 2, "04_stretch": 3}
+        
+        if isinstance(raw_label, int):
+            label = raw_label
+        else:
+            label = label_map.get(raw_label, 0)
+
         return image, label
 
 
@@ -68,6 +78,7 @@ def get_transforms(is_train=True):
     if is_train:
         return transforms.Compose([
             transforms.Resize((256, 256)),
+            transforms.RandomRotation(10),
             transforms.RandomCrop(224),
             transforms.RandomHorizontalFlip(),
             transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
@@ -113,12 +124,33 @@ def train(args):
     )
 
     # Model
+# Model
     model = PostureClassifier(num_classes=NUM_CLASSES, pretrained=True).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    
+    # 修正1: Adam -> AdamW に変更し、weight_decayを追加
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs, eta_min=1e-6
     )
-    criterion = nn.CrossEntropyLoss()
+    
+    # 修正2: クラスの不均衡を補正する重み付きLossの追加
+    from collections import Counter
+    train_json_path = os.path.join(args.data_path, "train.json")
+    with open(train_json_path, 'r', encoding="utf-8") as f:
+        train_data = json.load(f)
+
+    labels = [item["label"] for item in train_data]
+    class_counts = Counter(labels)
+    class_names = sorted(list(class_counts.keys()))
+    print(f"Class counts: {class_counts}")
+
+    weights = [1.0 / class_counts[c] for c in class_names]
+    weights_tensor = torch.tensor(weights, dtype=torch.float32).to(device)
+    weights_tensor = weights_tensor / weights_tensor.sum() * len(class_names)
+    print(f"Class weights: {weights_tensor}")
+
+    criterion = nn.CrossEntropyLoss(weight=weights_tensor)
 
     os.makedirs(args.output_dir, exist_ok=True)
 

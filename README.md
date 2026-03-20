@@ -124,3 +124,56 @@ graph TD
     HF -.->|"Fine-tuning"| Vision
     Train_PINN -.->|"モデルDeploy"| PINN
 ```
+
+---
+
+## 🚀 セットアップ & 起動方法
+
+### 前提条件
+
+- Python 3.10+
+- Webカメラ（姿勢検知用）
+- 学習済みONNXモデルが `model/posture/` および `model/airflow/` に配置済みであること
+
+### CPU版（ノートPC / 開発環境）
+
+```bash
+pip install -r app/requirements-cpu.txt
+streamlit run app/main.py
+```
+
+### NVIDIA DGX Spark版（GPU推論）
+
+CUDA 12.x がインストールされた DGX Spark 環境で実行してください。
+TensorRT > CUDA > CPU の優先順で自動的に最適なプロバイダが選択されます。
+
+```bash
+pip install -r app/requirements-dgx.txt
+streamlit run app/main.py
+```
+
+> **Note:** `onnxruntime` と `onnxruntime-gpu` は排他的なパッケージです。両方を同時にインストールしないでください。
+
+### 環境変数によるプロバイダ制御
+
+環境変数 `ONNX_DEVICE` で推論プロバイダを明示的に指定できます。
+
+| 値 | プロバイダ優先順 | ユースケース |
+|------|-----------------|-------------|
+| `auto`（デフォルト） | TensorRT > CUDA > CPU | 利用可能な最速プロバイダを自動選択 |
+| `dgx` | TensorRT > CUDA > CPU | DGX Spark 明示指定 |
+| `cuda` | CUDA > CPU | TensorRT なしの CUDA 環境 |
+| `cpu` | CPU のみ | GPU環境でのデバッグ・検証用 |
+
+```bash
+# 例: GPU搭載マシンでもCPU推論を強制
+ONNX_DEVICE=cpu streamlit run app/main.py
+```
+
+### スモークテスト
+
+モデルの読み込みと推論が正常に動作するか確認できます。
+
+```bash
+python -m app.test_inference
+```
