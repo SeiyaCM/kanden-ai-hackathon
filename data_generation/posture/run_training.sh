@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH -J posture_train
+#SBATCH -J posture_train_v2
 #SBATCH -p gpu
 #SBATCH --gres=gpu:1
 #SBATCH -c 8
 #SBATCH --mem=64G
-#SBATCH -o slurm-posture-%j.out
+#SBATCH -o slurm-posture-v2-%j.out
 #SBATCH --container-image=/home/team-008/nvidia+pytorch+25.11-py3.sqsh
 #SBATCH --container-mounts=/home/team-008:/home/team-008
 
@@ -12,21 +12,21 @@ set -euo pipefail
 
 cd /home/team-008/data_generation/posture
 
-echo "=== Starting posture classification model training ==="
+echo "=== Starting posture classification model training (V2) ==="
 echo "Start time: $(date)"
 echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo 'N/A')"
 
-# Install dependencies
-pip install --user torchvision scikit-learn onnx
+# 依存ライブラリに datasets を追加
+pip install --user torchvision scikit-learn onnx datasets
 
 # Paths
-DATA_DIR="/home/team-008/data/synthetic_dataset"
+DATA_DIR="/home/team-008/data/synthetic_dataset_v2" # 以前のデータと分けるため v2 に変更
 MODEL_DIR="/home/team-008/data/posture_model"
 
-# Step 1: Prepare dataset (if not already done)
+# Step 1: HuggingFace からデータを取得 (変更箇所)
 if [ ! -f "${DATA_DIR}/train.json" ]; then
-    echo "--- Preparing dataset ---"
-    python -u prepare_dataset.py --data-dir "${DATA_DIR}"
+    echo "--- Preparing dataset from Hugging Face ---"
+    python -u prepare_dataset_hf.py --data-dir "${DATA_DIR}"
 else
     echo "--- Dataset already prepared, skipping ---"
 fi

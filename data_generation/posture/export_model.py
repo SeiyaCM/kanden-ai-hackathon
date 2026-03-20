@@ -39,16 +39,30 @@ def export_onnx(checkpoint_path, output_path):
         opset_version=17,
     )
 
-    print(f"ONNX model exported: {output_path}")
+    print(f"ONNX model exported (initial): {output_path}")
+
+    # Force single-file format (remove external .data dependency)
+    import onnx
+    from onnx.external_data_helper import convert_model_from_external_data
+    onnx_model = onnx.load(output_path, load_external_data=True)
+    convert_model_from_external_data(onnx_model)
+    onnx.save_model(onnx_model, output_path)
+
+    # Remove leftover .data file if exists
+    data_path = output_path + ".data"
+    if os.path.exists(data_path):
+        os.remove(data_path)
+        print(f"Removed external data file: {data_path}")
 
     # Verify
-    import onnx
     onnx_model = onnx.load(output_path)
     onnx.checker.check_model(onnx_model)
-    print("ONNX model validation passed")
+    print("ONNX model validation passed (single-file)")
 
     size_mb = os.path.getsize(output_path) / (1024 * 1024)
     print(f"Model size: {size_mb:.2f} MB")
+    if size_mb < 1.0:
+        print(f"WARNING: Model is only {size_mb:.2f} MB — weights may be missing!")
 
 
 def export_torchscript(checkpoint_path, output_path):
