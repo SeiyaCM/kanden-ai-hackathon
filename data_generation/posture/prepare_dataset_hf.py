@@ -4,7 +4,7 @@ import argparse
 from datasets import load_dataset
 from sklearn.model_selection import train_test_split
 
-def prepare_hf_dataset(output_dir, repo_id="SeiyaCM/KandenAiHackathon"):
+def prepare_hf_dataset(output_dir, repo_id="SeiyaCM/KandenAiHackathonPosture"): # Posture を追記
     os.makedirs(output_dir, exist_ok=True)
     images_dir = os.path.join(output_dir, "images")
     os.makedirs(images_dir, exist_ok=True)

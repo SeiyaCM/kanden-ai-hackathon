@@ -12,7 +12,7 @@ set -euo pipefail
 
 cd /home/team-008/data_generation/posture
 
-echo "=== Starting posture classification model training (V2) ==="
+echo "=== Starting posture classification model training (V3) ==="
 echo "Start time: $(date)"
 echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo 'N/A')"
 
@@ -20,7 +20,7 @@ echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || ec
 pip install --user torchvision scikit-learn onnx datasets
 
 # Paths
-DATA_DIR="/home/team-008/data/synthetic_dataset_v2" # 以前のデータと分けるため v2 に変更
+DATA_DIR="/home/team-008/data/synthetic_dataset_v3" # v2 を v3 に変更
 MODEL_DIR="/home/team-008/data/posture_model"
 
 # Step 1: HuggingFace からデータを取得 (変更箇所)
