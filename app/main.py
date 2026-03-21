@@ -50,7 +50,6 @@ ac_speed = st.sidebar.slider("エアコン風速 (m/s)", 1.0, 5.0, 3.0, 0.5)
 ac_temp = st.sidebar.slider("エアコン温度 (°C)", 20.0, 28.0, 24.0, 1.0)
 window_open = st.sidebar.checkbox("窓を開ける", value=False)
 layout_id = st.sidebar.selectbox("家具レイアウト", [0, 1, 2])
-vent_rate = st.sidebar.slider("換気量 (m³/s)", 0.0, 0.1, 0.05, 0.01)
 
 st.sidebar.header("デスク位置")
 desk_x = st.sidebar.number_input("X (m)", 0.0, 6.0, DEFAULT_DESK_X, 0.1)
@@ -72,7 +71,7 @@ api_key = st.sidebar.text_input(
 # ---------------------------------------------------------------------------
 airflow_result = airflow_model.predict_at_point(
     desk_x, desk_y, desk_z,
-    ac_speed, ac_temp, float(window_open), float(layout_id), vent_rate,
+    ac_speed, ac_temp, float(window_open), float(layout_id)
 )
 
 # ---------------------------------------------------------------------------

@@ -43,10 +43,11 @@ class AirflowInference:
         ac_temp: float,
         window_open: float,
         layout_id: float,
-        vent_rate: float,
     ) -> np.ndarray:
         """Normalize raw physical values to [0,1] model input (1, 8)."""
         n = self.norm
+        vent_rate = 0.05  # ★ アプリ側で換気量を捨てたため、標準値で固定
+        
         return np.array(
             [[
                 _minmax(x, n["coords_min"][0], n["coords_max"][0]),
@@ -55,7 +56,7 @@ class AirflowInference:
                 _minmax(ac_speed, n["ac_speed_min"], n["ac_speed_max"]),
                 _minmax(ac_temp, n["ac_temperature_min"], n["ac_temperature_max"]),
                 float(window_open),
-                layout_id / 2.0,  # prepare_dataset.py line 117
+                layout_id / 2.0,
                 _minmax(vent_rate, n["ventilation_rate_min"], n["ventilation_rate_max"]),
             ]],
             dtype=np.float32,
@@ -79,10 +80,11 @@ class AirflowInference:
         ac_temp: float,
         window_open: float,
         layout_id: float,
-        vent_rate: float,
+        # vent_rate: float, を完全に削除
     ) -> dict:
         """Convenience: normalize raw values and run inference."""
         inp = self.normalize_input(
-            x, y, z, ac_speed, ac_temp, window_open, layout_id, vent_rate
+            x, y, z, ac_speed, ac_temp, window_open, layout_id
+            # ここからも vent_rate を削除
         )
         return self.predict(inp)
