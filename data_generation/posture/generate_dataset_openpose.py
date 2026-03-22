@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import argparse
 import torch
 import cv2
 import numpy as np
@@ -12,8 +13,9 @@ from tqdm import tqdm
 # --- 設定パラメータ ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_IMAGE_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "../../data/base_images"))
-OUTPUT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "../../data/synthetic_dataset_v3"))
-NUM_VARIATIONS = 250 # 1枚のベース画像から何枚生成するか
+OUTPUT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "../../data/synthetic_dataset_v4"))
+NUM_VARIATIONS = 2500  # 1枚のベース画像から何枚生成するか
+BATCH_SIZE = 4  # A5000 (24GB VRAM) で同時生成する枚数
 
 # --- MediaPipe 初期化 ---
 mp_pose = mp.solutions.pose
@@ -57,30 +59,68 @@ def mediapipe_to_openpose(img_path):
     return Image.fromarray(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB))
 
 def generate_random_prompt():
-    """環境・服装・人物をランダム化し、現実のノイズを再現する"""
+    """環境・服装・人物をランダム化し、Webカメラ特有の悪条件を再現する"""
     ages = ["a 20-year-old", "a 35-year-old", "a 50-year-old", "a young", "a middle-aged"]
     genders = ["man", "woman", "person"]
     ethnicities = ["Japanese", "Asian", "Caucasian", "Black", "Hispanic"]
     clothing = [
-        "wearing a casual t-shirt", "in a cozy hoodie", "wearing a formal suit", 
-        "in a knitted sweater", "wearing a tank top", "in a flannel shirt", "wearing a sports jacket"
+        "wearing a casual t-shirt", "in a cozy hoodie", "wearing a formal suit",
+        "in a knitted sweater", "wearing a tank top", "in a flannel shirt", "wearing a sports jacket",
+        "wearing dark black clothes", "in dark navy shirt blending with background",
     ]
+    accessories = ["wearing glasses", "wearing a face mask", "wearing a hat", "wearing earphones"]
     backgrounds = [
-        "in a bright modern office", "at a messy home desk", "in a dimly lit cybercafe", 
+        "in a bright modern office", "at a messy home desk", "in a dimly lit cybercafe",
         "at a sunny cafe table", "in a minimalist white room", "in a messy bedroom",
-        "in a dark server room lit by monitor glow", "in a library", "with a plain gray background"
+        "in a dark server room lit by monitor glow", "in a library", "with a plain gray background",
+        "messy office background", "cluttered room", "small cramped apartment",
+        "busy coworking space with people behind",
     ]
     lighting = [
-        "natural sunlight from window", "cinematic dramatic lighting", "soft diffused lighting", 
-        "neon cyberpunk lighting", "harsh fluorescent lights", "warm desk lamp light"
+        "natural sunlight from window", "cinematic dramatic lighting", "soft diffused lighting",
+        "neon cyberpunk lighting", "harsh fluorescent lights", "warm desk lamp light",
+        "dimly lit room", "low light environment", "fluorescent lighting",
+        "screen glow only", "harsh overhead light", "backlit by window",
     ]
-    angles = ["front view", "slightly angled view", "side view", "eye level camera"]
-    
-    prompt = f"{random.choice(ages)} {random.choice(ethnicities)} {random.choice(genders)}, sitting, {random.choice(clothing)}, {random.choice(angles)}, {random.choice(backgrounds)}, {random.choice(lighting)}, highly detailed, 4k, realistic photography"
+    angles = [
+        "front view", "slightly angled view", "side view", "eye level camera",
+        "webcam point of view", "low angle shot", "high angle shot",
+        "shot from below", "shot from above", "overhead webcam view", "laptop webcam angle",
+    ]
+    noise_effects = [
+        "motion blur", "webcam artifact", "grainy",
+        "slightly out of focus", "low resolution webcam quality",
+    ]
+
+    prompt = f"{random.choice(ages)} {random.choice(ethnicities)} {random.choice(genders)}, sitting, {random.choice(clothing)}, {random.choice(angles)}, {random.choice(backgrounds)}, {random.choice(lighting)}, highly detailed, realistic photography"
+
+    # 30%の確率でアクセサリーを1〜2個独立付与
+    if random.random() < 0.3:
+        chosen_acc = random.sample(accessories, random.randint(1, 2))
+        prompt += ", " + ", ".join(chosen_acc)
+
+    # ランダムに0〜2個の画質ノイズを付与
+    num_noise = random.randint(0, 2)
+    if num_noise > 0:
+        chosen_noise = random.sample(noise_effects, num_noise)
+        prompt += ", " + ", ".join(chosen_noise)
+
     negative_prompt = "bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, cartoon, illustration, anime"
     return prompt, negative_prompt
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="悪条件データ生成 (v4)")
+    parser.add_argument("--class-name", type=str, default=None,
+                        help="対象クラス名 (例: 01_good)。未指定時は全クラス処理")
+    parser.add_argument("--num-variations", type=int, default=NUM_VARIATIONS,
+                        help="1枚のベース画像あたりの生成枚数")
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+    num_variations = args.num_variations
+
     # 1. モデルのロード (A5000に最適化)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-openpose", torch_dtype=torch.float16)
@@ -88,53 +128,66 @@ def main():
         "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, safety_checker=None
     ).to(device)
     pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-    # pipe.enable_xformers_memory_efficient_attention() # A5000でVRAM節約・高速化
-    
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    metadata = []
-    
-    # 2. ベース画像の検索
-    classes = sorted(os.listdir(BASE_IMAGE_DIR))
-    for class_name in classes:
-        class_dir = os.path.join(BASE_IMAGE_DIR, class_name)
-        if not os.path.isdir(class_dir): continue
-        
-        out_class_dir = os.path.join(OUTPUT_DIR, class_name)
-        os.makedirs(out_class_dir, exist_ok=True)
-        
-        base_images = [f for f in os.listdir(class_dir) if f.endswith(('.png', '.jpg'))]
-        
-        for img_name in base_images:
-            base_path = os.path.join(class_dir, img_name)
-            skeleton_img = mediapipe_to_openpose(base_path)
-            if skeleton_img is None: continue
-            
-            print(f"Generating variations for {class_name}/{img_name}...")
-            
-            for i in tqdm(range(NUM_VARIATIONS)):
-                prompt, neg_prompt = generate_random_prompt()
-                
-                # 画像生成
-                generated = pipe(
-                    prompt, negative_prompt=neg_prompt, image=skeleton_img,
-                    num_inference_steps=20, guidance_scale=7.5
-                ).images[0]
-                
-                out_name = f"{class_name}_{os.path.splitext(img_name)[0]}_var{i:03d}.png"
-                out_path = os.path.join(out_class_dir, out_name)
-                generated.save(out_path)
-                
-                metadata.append({
-                    "file_name": os.path.join(class_name, out_name),
-                    "label": class_name,
-                    "prompt": prompt
-                })
 
-    # 3. メタデータの保存
-    with open(os.path.join(OUTPUT_DIR, "metadata.jsonl"), "w") as f:
-        for item in metadata:
-            f.write(json.dumps(item) + "\n")
-    print(f"Generation complete. Saved to {OUTPUT_DIR}")
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    # 2. メタデータファイルを追記モードで開く（クラッシュ耐性）
+    meta_filename = f"metadata_{args.class_name}.jsonl" if args.class_name else "metadata.jsonl"
+    meta_path = os.path.join(OUTPUT_DIR, meta_filename)
+    generated_count = 0
+
+    # 3. ベース画像の検索
+    if args.class_name:
+        classes = [args.class_name]
+    else:
+        classes = sorted(os.listdir(BASE_IMAGE_DIR))
+
+    with open(meta_path, "a") as f_meta:
+        for class_name in classes:
+            class_dir = os.path.join(BASE_IMAGE_DIR, class_name)
+            if not os.path.isdir(class_dir):
+                continue
+
+            out_class_dir = os.path.join(OUTPUT_DIR, class_name)
+            os.makedirs(out_class_dir, exist_ok=True)
+
+            base_images = [f for f in os.listdir(class_dir) if f.endswith(('.png', '.jpg'))]
+
+            for img_name in base_images:
+                base_path = os.path.join(class_dir, img_name)
+                skeleton_img = mediapipe_to_openpose(base_path)
+                if skeleton_img is None:
+                    continue
+
+                print(f"Generating {num_variations} variations for {class_name}/{img_name}...")
+
+                for i in tqdm(range(0, num_variations, BATCH_SIZE)):
+                    current_batch = min(BATCH_SIZE, num_variations - i)
+                    prompts, neg_prompts = zip(*[generate_random_prompt() for _ in range(current_batch)])
+
+                    # バッチ生成（A5000 VRAM活用）
+                    images = pipe(
+                        list(prompts), negative_prompt=list(neg_prompts),
+                        image=[skeleton_img] * current_batch,
+                        num_inference_steps=20, guidance_scale=7.5,
+                    ).images
+
+                    for j, generated in enumerate(images):
+                        idx = i + j
+                        out_name = f"{class_name}_{os.path.splitext(img_name)[0]}_var{idx:04d}.png"
+                        out_path = os.path.join(out_class_dir, out_name)
+                        generated.save(out_path)
+
+                        f_meta.write(json.dumps({
+                            "file_name": os.path.join(class_name, out_name),
+                            "label": class_name,
+                            "prompt": prompts[j],
+                        }) + "\n")
+                        f_meta.flush()
+                        generated_count += 1
+
+    print(f"Generation complete. {generated_count} images saved to {OUTPUT_DIR}")
+
 
 if __name__ == "__main__":
     main()
