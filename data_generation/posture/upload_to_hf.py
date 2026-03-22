@@ -7,9 +7,9 @@ from huggingface_hub import HfApi
 load_dotenv(Path(__file__).parent / "local.env")
 
 # 設定
-REPO_ID = "SeiyaCM/KandenAiHackathonPosture"
+REPO_ID = "SeiyaCM/KandenAiHackathonPosture2"
 HF_TOKEN = os.environ.get("HF_TOKEN")
-DATASET_FOLDER = "/home/team-008/data/synthetic_dataset_v3"
+DATASET_FOLDER = "/home/team-008/data/synthetic_dataset_v4"
 
 api = HfApi(token=HF_TOKEN)
 
