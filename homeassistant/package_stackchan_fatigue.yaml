@@ -1,0 +1,43 @@
+# Home Assistant パッケージ: 疲労度に応じた AI_StackChan2（スタックちゃん）表情・発話・LEGO PF
+#
+# configuration.yaml に次を追加して読み込んでください。
+#   homeassistant:
+#     packages:
+#       stackchan_fatigue: !include package_stackchan_fatigue.yaml
+#
+# 前提: sensor.kanden_fatigue（MQTT センサー）が存在すること。
+# Docker 等で stack-chan.local が解決しない場合は、下記 curl 内のホストを Core2 の IP に置き換えてください。
+
+shell_command:
+  stackchan_face_neutral: 'curl -sS --max-time 10 "http://stack-chan.local/face?expression=0"'
+  # 高疲労時: 日本語は --data-urlencode でクエリに載せる（計画: docs/plans/2026-03-23-feat-ha-fatigue-stackchan-high-threshold-plan.md）
+  stackchan_fatigue_speech: 'curl -sS -G --max-time 60 "http://stack-chan.local/speech" --data-urlencode "say=おつかれさまやなぁ。あめちゃんたべぇ"'
+  stackchan_lego_forward: 'curl -sS --max-time 10 -X POST -d "ch=0&pwm=15&out=b" "http://stack-chan.local/lego"'
+  stackchan_lego_stop: 'curl -sS --max-time 10 -X POST -d "ch=0&pwm=0&out=b" "http://stack-chan.local/lego"'
+
+automation:
+  - id: fatigue_below_stackchan_neutral
+    alias: 疲労度0.7未満でスタックちゃん表情を通常に
+    description: 疲労度が0.7を下回ったとき表情をNeutral(0)に戻す
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.kanden_fatigue
+        below: 0.7
+    action:
+      - service: shell_command.stackchan_face_neutral
+    mode: single
+
+  - id: fatigue_above_stackchan_ames
+    alias: 疲労度0.7以上でスタックちゃん発話とLEGO駆動
+    description: 疲労度が0.7以上のとき発話後にLEGO青側正転最大、10秒後にpwm=0で停止。再入防止のため mode single。
+    mode: single
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.kanden_fatigue
+        above: 0.7
+    action:
+      - service: shell_command.stackchan_fatigue_speech
+      - service: shell_command.stackchan_lego_forward
+      - delay:
+          seconds: 10
+      - service: shell_command.stackchan_lego_stop
