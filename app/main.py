@@ -23,7 +23,12 @@ from PIL import ImageFont, ImageDraw, Image
 from app.inference.posture import PostureInference
 from app.inference.airflow import AirflowInference
 from app.inference.fatigue import FatigueScorer
-from app.config import DEFAULT_DESK_X, DEFAULT_DESK_Y, DEFAULT_DESK_Z
+from app.config import (
+    AUDIO_ANALYZE_INTERVAL,
+    DEFAULT_DESK_X,
+    DEFAULT_DESK_Y,
+    DEFAULT_DESK_Z,
+)
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -42,6 +47,16 @@ def load_models():
 
 posture_model, airflow_model, fatigue_scorer = load_models()
 
+
+@st.cache_resource
+def load_audio_analyzer():
+    """Load AudioSpeechAnalyzer; returns None if mic unavailable."""
+    try:
+        from app.inference.audio import AudioSpeechAnalyzer
+        return AudioSpeechAnalyzer()
+    except Exception:
+        return None
+
 # ---------------------------------------------------------------------------
 # Sidebar — room environment controls
 # ---------------------------------------------------------------------------
@@ -55,6 +70,15 @@ st.sidebar.header("デスク位置")
 desk_x = st.sidebar.number_input("X (m)", 0.0, 6.0, DEFAULT_DESK_X, 0.1)
 desk_y = st.sidebar.number_input("Y (m)", 0.0, 5.0, DEFAULT_DESK_Y, 0.1)
 desk_z = st.sidebar.number_input("Z (m)", 0.0, 2.7, DEFAULT_DESK_Z, 0.1)
+
+# ---------------------------------------------------------------------------
+# Sidebar — voice monitoring
+# ---------------------------------------------------------------------------
+st.sidebar.header("音声設定")
+enable_voice = st.sidebar.checkbox("音声モニタリング", value=True)
+audio_analyzer = load_audio_analyzer() if enable_voice else None
+if enable_voice and audio_analyzer is None:
+    st.sidebar.warning("マイク未検出 — 音声モニタリング無効")
 
 # ---------------------------------------------------------------------------
 # Sidebar — optional cloud send
@@ -151,6 +175,10 @@ with col_dash:
     score_placeholder = st.empty()
     posture_placeholder = st.empty()
 
+    st.subheader("音声認識")
+    voice_text_placeholder = st.empty()
+    voice_status_placeholder = st.empty()
+
     st.subheader("室内環境 (AI予測)")
     env_placeholder = st.empty()
     env_placeholder.json(airflow_result)
@@ -169,6 +197,8 @@ INFERENCE_INTERVAL = 5  # run posture inference every N frames
 frame_count = 0
 last_posture = {"class": "good", "class_idx": 0, "confidence": 0.0, "probabilities": {}}
 last_fatigue = {"fatigue_score": 0.0, "posture_score": 0.0, "environment_score": 0.0}
+last_voice_result: dict | None = None
+last_voice_analyze = 0.0
 cloud_send_interval = 10.0  # seconds
 last_cloud_send = 0.0
 
@@ -180,10 +210,29 @@ try:
 
         frame_count += 1
 
+        # Run voice analysis periodically
+        now = time.time()
+        if audio_analyzer and now - last_voice_analyze > AUDIO_ANALYZE_INTERVAL:
+            last_voice_analyze = now
+            last_voice_result = audio_analyzer.analyze()
+
+            voice_text_placeholder.text(
+                f"認識テキスト: {last_voice_result['transcript'] or '（音声なし）'}"
+            )
+            if last_voice_result["negative_detected"]:
+                voice_status_placeholder.warning(
+                    f"⚠ ネガティブ発話検出: "
+                    f"{', '.join(last_voice_result['matched_keywords'])}"
+                )
+            else:
+                voice_status_placeholder.info("音声: 正常")
+
         # Run posture inference periodically
         if frame_count % INFERENCE_INTERVAL == 0:
             last_posture = posture_model.predict(frame)
-            last_fatigue = fatigue_scorer.compute(last_posture, airflow_result)
+            last_fatigue = fatigue_scorer.compute(
+                last_posture, airflow_result, last_voice_result
+            )
 
             # Update dashboard
             score = last_fatigue["fatigue_score"]
@@ -216,6 +265,14 @@ try:
                             "score": last_fatigue["posture_score"],
                             "detected_posture": last_posture["class"],
                         },
+                        "voice": {
+                            "score": last_fatigue.get("voice_score", 0.0),
+                            "negative_detected": (
+                                last_voice_result.get("negative_detected", False)
+                                if last_voice_result
+                                else False
+                            ),
+                        },
                     },
                 }
                 try:
@@ -238,3 +295,5 @@ try:
 
 finally:
     cap.release()
+    if audio_analyzer:
+        audio_analyzer.stop()

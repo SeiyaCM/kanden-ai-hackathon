@@ -47,3 +47,30 @@ AIRFLOW_NORM = {
 DEFAULT_DESK_X = 1.5
 DEFAULT_DESK_Y = 0.9
 DEFAULT_DESK_Z = 1.2  # approximate head height when seated
+
+# ---------------------------------------------------------------------------
+# Speech / Voice analysis
+# ---------------------------------------------------------------------------
+WHISPER_MODEL_SIZE = "base"
+WHISPER_DEVICE = "cpu"
+WHISPER_COMPUTE_TYPE = "int8"
+
+AUDIO_SAMPLE_RATE = 16000
+AUDIO_BUFFER_SECONDS = 5
+AUDIO_ANALYZE_INTERVAL = 3  # seconds between transcription runs
+
+VOICE_SCORE_DECAY = 0.85  # per-cycle decay when no negative speech detected
+
+NEGATIVE_KEYWORDS: dict[str, float] = {
+    "疲れた": 0.9,
+    "しんどい": 0.9,
+    "眠い": 0.7,
+    "眠たい": 0.7,
+    "だるい": 0.8,
+    "つらい": 0.8,
+    "わからない": 0.5,
+    "無理": 0.7,
+    "きつい": 0.8,
+    "集中できない": 0.6,
+    "頭痛い": 0.8,
+}

@@ -16,8 +16,13 @@ POSTURE_FATIGUE_MAP = {
     "stretch": 0.3,
 }
 
-POSTURE_WEIGHT = 0.7
-ENVIRONMENT_WEIGHT = 0.3
+POSTURE_WEIGHT = 0.5
+ENVIRONMENT_WEIGHT = 0.2
+VOICE_WEIGHT = 0.3
+
+# Fallback weights when voice modality is unavailable
+_POSTURE_WEIGHT_NO_VOICE = 0.7
+_ENVIRONMENT_WEIGHT_NO_VOICE = 0.3
 
 
 class FatigueScorer:
@@ -51,21 +56,42 @@ class FatigueScorer:
 
         return 0.4 * stagnation_stress + 0.4 * co2_stress + 0.2 * temp_stress
 
-    def compute(self, posture_result: dict, airflow_result: dict) -> dict:
+    def compute(
+        self,
+        posture_result: dict,
+        airflow_result: dict,
+        voice_result: dict | None = None,
+    ) -> dict:
         """Return combined fatigue assessment.
 
         Returns dict matching docs/openapi.yml FatiguePayload schema.
+        When *voice_result* is ``None`` the original 2-modality weights are
+        used for backward compatibility.
         """
         posture_score = self.compute_posture_score(posture_result)
         env_score = self.compute_environment_score(airflow_result)
-        fatigue_score = max(
-            0.0,
-            min(1.0, POSTURE_WEIGHT * posture_score + ENVIRONMENT_WEIGHT * env_score),
-        )
+
+        if voice_result is not None:
+            voice_score = voice_result["voice_score"]
+            fatigue_score = (
+                POSTURE_WEIGHT * posture_score
+                + ENVIRONMENT_WEIGHT * env_score
+                + VOICE_WEIGHT * voice_score
+            )
+        else:
+            voice_score = 0.0
+            fatigue_score = (
+                _POSTURE_WEIGHT_NO_VOICE * posture_score
+                + _ENVIRONMENT_WEIGHT_NO_VOICE * env_score
+            )
+
+        fatigue_score = max(0.0, min(1.0, fatigue_score))
+
         return {
             "fatigue_score": fatigue_score,
             "posture_score": posture_score,
             "environment_score": env_score,
+            "voice_score": voice_score,
             "posture_detail": posture_result,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
