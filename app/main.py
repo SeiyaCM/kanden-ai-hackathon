@@ -4,6 +4,7 @@ Usage:
     streamlit run app/main.py
 """
 
+import json
 import os
 import sys
 import time
@@ -28,6 +29,8 @@ from app.config import (
     DEFAULT_DESK_X,
     DEFAULT_DESK_Y,
     DEFAULT_DESK_Z,
+    FATIGUE_LOG_INTERVAL,
+    FATIGUE_LOG_PATH,
 )
 
 # ---------------------------------------------------------------------------
@@ -201,6 +204,7 @@ last_voice_result: dict | None = None
 last_voice_analyze = 0.0
 cloud_send_interval = 10.0  # seconds
 last_cloud_send = 0.0
+last_log_write = 0.0
 
 try:
     while cap.isOpened():
@@ -284,6 +288,24 @@ try:
                     )
                 except requests.RequestException:
                     pass  # fire-and-forget
+
+            # File log output (append JSONLines)
+            now_log = time.time()
+            if now_log - last_log_write > FATIGUE_LOG_INTERVAL:
+                last_log_write = now_log
+                log_entry = {
+                    "device_id": "dgx-spark-001",
+                    "user_id": "engineer-001",
+                    "timestamp": last_fatigue["timestamp"],
+                    "fatigue_score": score,
+                }
+                try:
+                    log_path = Path(FATIGUE_LOG_PATH)
+                    log_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(log_path, "a", encoding="utf-8") as f:
+                        f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+                except OSError:
+                    pass
 
         # Draw overlay and display
         display = draw_overlay(frame.copy(), last_posture, last_fatigue)

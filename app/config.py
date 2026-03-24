@@ -1,5 +1,6 @@
 """Central configuration: model paths, class labels, normalization parameters."""
 
+import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -60,6 +61,12 @@ AUDIO_BUFFER_SECONDS = 5
 AUDIO_ANALYZE_INTERVAL = 3  # seconds between transcription runs
 
 VOICE_SCORE_DECAY = 0.85  # per-cycle decay when no negative speech detected
+
+# ---------------------------------------------------------------------------
+# Fatigue log output
+# ---------------------------------------------------------------------------
+FATIGUE_LOG_PATH = os.getenv("FATIGUE_LOG_PATH", r"C:\tmp\fatigue-log.json")
+FATIGUE_LOG_INTERVAL = 10  # seconds between log writes
 
 NEGATIVE_KEYWORDS: dict[str, float] = {
     "疲れた": 0.9,
