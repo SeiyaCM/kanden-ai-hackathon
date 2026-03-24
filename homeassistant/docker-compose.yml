@@ -1,0 +1,18 @@
+# Home Assistant（Docker 実行例）
+# 使い方: 設定ディレクトリをマウント先に合わせてから `docker compose up -d`
+# 例: volumes を `- /home/tadashi/homeassistant:/config` に変更
+#
+# network_mode: host … ホストと同一ネットワーク（ポート 8123 はホストで待受）
+#
+# 補足: ホストモードでもコンテナは Alpine 系 rootfs のため、musl の名前解決では
+# stack-chan.local（mDNS）が解決できないことがあります。package_stackchan_fatigue.yaml
+# ではスタックちゃんの IP 指定や、ホスト側の固定 DHCP を併用してください。
+
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:stable
+    network_mode: host
+    volumes:
+      - ./data:/config
+    restart: unless-stopped

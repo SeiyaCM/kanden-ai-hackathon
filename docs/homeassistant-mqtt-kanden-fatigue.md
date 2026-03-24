@@ -17,6 +17,8 @@ Home Assistant は AWS IoT Core に直接接続できないため（クライア
 - Raspberry Pi に Docker で Home Assistant が稼働していること
 - AWS IoT Core にトピック `kanden/fatigue` へパブリッシュする仕組みがデプロイ済みであること（`iac/` の CDK スタック）
 
+**注記（ホスト名）:** Pi を LAN 上で **`ホスト名.local`**（mDNS）として参照する場合、その名前は **Raspberry Pi OS をセットアップするときに指定したホスト名**に一致する（Raspberry Pi Imager の OS カスタマイズ等）。手順内の SSH 例 `ssh <username>@<hostname>` の `<hostname>` は、自環境の実名に読み替えること。
+
 ## 1. AWS IoT Thing・証明書の作成
 
 Home Assistant 用の IoT Thing を作成し、証明書を発行します。
@@ -150,8 +152,30 @@ sudo docker restart homeassistant
    ```
 3. **開発者ツール → 状態** で `sensor.kanden_fatigue` を検索し、値が `0.75` に更新されることを確認
 
+## 7. 疲労度が 0.7 未満のときスタックちゃんの表情を通常に戻す
+
+AI_StackChan2 を **同一 LAN** で動かし、HTTP で `GET /face?expression=0` できる場合の例です。
+
+1. `configuration.yaml` にパッケージを読み込む:
+
+   ```yaml
+   homeassistant:
+     packages:
+       stackchan_fatigue: !include package_stackchan_fatigue.yaml
+   ```
+
+   パスは `config` からの相対パスに合わせてください（例: `!include homeassistant/package_stackchan_fatigue.yaml`）。
+
+2. リポジトリの **`homeassistant/package_stackchan_fatigue.yaml`** を Home Assistant の `config` 配下にコピーするか、内容を貼り付けます。
+
+3. **トリガー**: `sensor.kanden_fatigue` の値が **0.7 未満に変化したとき**（しきい値のクロス時）に `expression=0` を送信します。
+
+4. **Docker 上の HA** で `stack-chan.local` が名前解決できない場合は、YAML 内の URL を **M5Stack の IP アドレス**に書き換えてください。
+
 ## 参考ファイル
 
 - リポジトリ内スニペット: `homeassistant/mqtt_kanden_fatigue.yaml`
+- スタックちゃん表情（0.7 未満で通常）: `homeassistant/package_stackchan_fatigue.yaml`
 - Mosquitto ブリッジ設定: `homeassistant/mosquitto_aws_iot_bridge.conf`
 - [MQTT Sensor（Home Assistant）](https://www.home-assistant.io/integrations/sensor.mqtt/)
+- [Numeric state トリガー](https://www.home-assistant.io/docs/automation/trigger/#numeric-state-trigger)

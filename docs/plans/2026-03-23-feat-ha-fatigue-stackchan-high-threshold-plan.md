@@ -1,5 +1,5 @@
 ---
-title: 疲労度0.7以上でスタックちゃん発話とLEGO PF（10秒後停止）
+title: 疲労度0.7以上でスタックちゃん発話とLEGO PF（15秒後停止）
 type: feat
 status: completed
 date: 2026-03-23
@@ -9,7 +9,7 @@ deepened: 2026-03-23
 
 <!-- markdownlint-disable MD025 -->
 
-# 疲労度 0.7 以上でスタックちゃん発話と LEGO PF（10 秒後停止）
+# 疲労度 0.7 以上でスタックちゃん発話と LEGO PF（15 秒後停止）
 
 ## Enhancement Summary
 
@@ -19,7 +19,7 @@ deepened: 2026-03-23
 
 ### Key Improvements
 
-1. **自動化 `mode` の選定理由を明文化**: `single` が本シーケンスに適する理由と、`restart` が **10 秒後停止を打ち切る**リスクを記載。
+1. **自動化 `mode` の選定理由を明文化**: `single` が本シーケンスに適する理由と、`restart` が **15 秒後停止を打ち切る**リスクを記載。
 2. **デバウンス**: `numeric_state` に **`for:`** を付ける強化案を公式パターンに沿って追記。
 3. **`mode: single` とシーケンス長による暗黙クールダウン**: 全アクション完了まで再入しない挙動を成功指標として明記。
 4. **実装スケルトン**: `shell_command` 3 本 + `automation` の並びをコピー用に疑似 YAML で提示（本番値は環境依存）。
@@ -37,8 +37,8 @@ deepened: 2026-03-23
 
 - トリガー: `sensor.kanden_fatigue` が **0.7 以上**
 - ① 固定文言の発話（`/speech`）
-- ② `POST /lego`：`ch=0`、`pwm=15`、`out=b`
-- ③ **10 秒**待機
+- ② `POST /lego`：`ch=0`、`pwm=7`、`out=b`
+- ③ **15 秒**待機
 - ④ `POST /lego`：`ch=0`、`pwm=0`、`out=b`（停止）
 - 実装方針: 既存パッケージと同様 **`shell_command` + `automation`（推奨アプローチ A）**
 
@@ -59,7 +59,7 @@ deepened: 2026-03-23
 **Best practices:**
 
 - 自動化の **`mode`** は `single`（既定）・`restart`・`queued`・`parallel` から選択。`queued` / `parallel` では **`max`** で待ち行列の上限を制御できる。
-- **クールダウン**が目的なら、公式例のとおり **`mode: single` とアクション末尾の `delay`** の組み合わせが定石。本件では **シーケンス全体（発話 + 10 秒 + 停止 POST）が終わるまで再入しない**ため、意図せず **追加のクールダウン**が生じる点を理解しておく。
+- **クールダウン**が目的なら、公式例のとおり **`mode: single` とアクション末尾の `delay`** の組み合わせが定石。本件では **シーケンス全体（発話 + 15 秒 + 停止 POST）が終わるまで再入しない**ため、意図せず **追加のクールダウン**が生じる点を理解しておく。
 
 **References:**
 
@@ -69,7 +69,7 @@ deepened: 2026-03-23
 
 ## 概要
 
-Home Assistant に **疲労度しきい値の「上側」** 自動化を追加する。同一オートメーション（または **`script`**）内で **発話 → モーター正転 → 10 秒待機 → モーター停止** を **直列実行**する。
+Home Assistant に **疲労度しきい値の「上側」** 自動化を追加する。同一オートメーション（または **`script`**）内で **発話 → モーター駆動（pwm=7）→ 15 秒待機 → モーター停止** を **直列実行**する。
 
 ```mermaid
 sequenceDiagram
@@ -78,8 +78,8 @@ sequenceDiagram
   participant LEGO as LEGO PF IR
 
   HA->>SC: GET /speech (say=固定文言)
-  HA->>SC: POST /lego ch=0 pwm=15 out=b
-  Note over HA: delay 10s
+  HA->>SC: POST /lego ch=0 pwm=7 out=b
+  Note over HA: delay 15s
   HA->>SC: POST /lego ch=0 pwm=0 out=b
   SC->>LEGO: IR (実機)
 ```
@@ -113,7 +113,7 @@ sequenceDiagram
 ### HTTP
 
 - **発話**: `GET /speech`。日本語は **`curl -G` と `--data-urlencode "say=..."`** でクエリを安全に付与。TTS が長い場合は **`--max-time`** を `10` 秒より大きくする（例: `60`）ことを検討。
-- **LEGO**: `POST /lego`、`Content-Type: application/x-www-form-urlencoded` 相当で **`-d "ch=0&pwm=15&out=b"`**。成功はデバイス側 **202** だが、`curl` は **2xx** で成功扱いになる。
+- **LEGO**: `POST /lego`、`Content-Type: application/x-www-form-urlencoded` 相当で **`-d "ch=0&pwm=7&out=b"`**。成功はデバイス側 **202** だが、`curl` は **2xx** で成功扱いになる。
 
 ### Research Insights（HTTP）
 
@@ -158,7 +158,7 @@ shell_command:
     curl -sS -G --max-time 60 "http://stack-chan.local/speech"
     --data-urlencode "say=おつかれさまやなぁ。あめちゃんたべぇ"
   stackchan_lego_forward: >-
-    curl -sS --max-time 10 -X POST -d "ch=0&pwm=15&out=b"
+    curl -sS --max-time 10 -X POST -d "ch=0&pwm=7&out=b"
     "http://stack-chan.local/lego"
   stackchan_lego_stop: >-
     curl -sS --max-time 10 -X POST -d "ch=0&pwm=0&out=b"
@@ -177,7 +177,7 @@ automation:
       - service: shell_command.stackchan_fatigue_speech
       - service: shell_command.stackchan_lego_forward
       - delay:
-          seconds: 10
+          seconds: 15
       - service: shell_command.stackchan_lego_stop
 ```
 
@@ -187,7 +187,7 @@ automation:
 
 ### 機能
 
-- [x] `sensor.kanden_fatigue` が **0.7 以上**になったとき、次が **順に**実行される: ① 指定日本語の発話リクエスト ② `ch=0,pwm=15,out=b` の POST ③ **10 秒**待機 ④ `ch=0,pwm=0,out=b` の POST（YAML 実装済み。**実機での発火確認は運用側**）
+- [x] `sensor.kanden_fatigue` が **0.7 以上**になったとき、次が **順に**実行される: ① 指定日本語の発話リクエスト ② `ch=0,pwm=7,out=b` の POST ③ **15 秒**待機 ④ `ch=0,pwm=0,out=b` の POST（YAML 実装済み。**実機での発火確認は運用側**）
 - [x] 既存の **0.7 未満で Neutral** の自動化は引き続き動作する（回帰で壊れないこと）
 - [x] パッケージ読み込み手順がコメントまたは `docs` で分かる（新規ファイルに分けた場合は `configuration.yaml` の `!include` 例を更新）
 
@@ -209,7 +209,7 @@ automation:
 
 ## 成功の目安
 
-- デモで疲労スコアを 0.7 以上にしたとき、**決め台詞 + モーター 10 秒 + 停止**が再現性高く行われる。
+- デモで疲労スコアを 0.7 以上にしたとき、**決め台詞 + モーター 15 秒 + 停止**が再現性高く行われる。
 - 設定が **パッケージ YAML の追記のみ**で完結し、追加コンテナやブリッジが不要。
 
 ## 依存関係とリスク
