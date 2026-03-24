@@ -24,6 +24,10 @@ VOICE_WEIGHT = 0.3
 _POSTURE_WEIGHT_NO_VOICE = 0.7
 _ENVIRONMENT_WEIGHT_NO_VOICE = 0.3
 
+# Synergy coefficients
+SYNERGY_PAIRWISE_ALPHA = 0.15
+SYNERGY_TRIPLE_BETA = 0.20
+
 
 class FatigueScorer:
     """Merge posture detection and airflow environment into a single score."""
@@ -73,22 +77,32 @@ class FatigueScorer:
 
         if voice_result is not None:
             voice_score = voice_result["voice_score"]
-            fatigue_score = (
+            base = (
                 POSTURE_WEIGHT * posture_score
                 + ENVIRONMENT_WEIGHT * env_score
                 + VOICE_WEIGHT * voice_score
             )
+            synergy = (
+                SYNERGY_PAIRWISE_ALPHA
+                * (posture_score * env_score
+                   + posture_score * voice_score
+                   + env_score * voice_score)
+                + SYNERGY_TRIPLE_BETA
+                * (posture_score * env_score * voice_score)
+            )
         else:
             voice_score = 0.0
-            fatigue_score = (
+            base = (
                 _POSTURE_WEIGHT_NO_VOICE * posture_score
                 + _ENVIRONMENT_WEIGHT_NO_VOICE * env_score
             )
+            synergy = SYNERGY_PAIRWISE_ALPHA * (posture_score * env_score)
 
-        fatigue_score = max(0.0, min(1.0, fatigue_score))
+        fatigue_score = max(0.0, min(1.0, base + synergy))
 
         return {
             "fatigue_score": fatigue_score,
+            "synergy_score": synergy,
             "posture_score": posture_score,
             "environment_score": env_score,
             "voice_score": voice_score,
