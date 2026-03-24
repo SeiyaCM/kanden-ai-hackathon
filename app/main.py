@@ -4,9 +4,11 @@ Usage:
     streamlit run app/main.py
 """
 
+import logging
 import os
 import sys
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 # Ensure project root is on sys.path so "app" package is importable
@@ -24,11 +26,20 @@ from app.inference.posture import PostureInference
 from app.inference.airflow import AirflowInference
 from app.inference.fatigue import FatigueScorer
 from app.config import (
+    ARM_SERVER_URL,
     AUDIO_ANALYZE_INTERVAL,
     DEFAULT_DESK_X,
     DEFAULT_DESK_Y,
     DEFAULT_DESK_Z,
+    ENABLE_LLM_SCORING,
+    FATIGUE_ARM_THRESHOLD,
+    LLM_MODEL,
+    LLM_TIMEOUT,
+    LLM_WINDOW_SIZE,
+    OLLAMA_HOST,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -42,10 +53,29 @@ st.title("空間AIブレイン — 疲労度モニター")
 
 @st.cache_resource
 def load_models():
-    return PostureInference(), AirflowInference(), FatigueScorer()
+    posture = PostureInference()
+    airflow = AirflowInference()
+    rule_scorer = FatigueScorer()
+
+    llm_scorer = None
+    if ENABLE_LLM_SCORING:
+        from app.inference.llm_fatigue import LLMFatigueScorer
+
+        llm_scorer = LLMFatigueScorer(
+            ollama_host=OLLAMA_HOST,
+            model_name=LLM_MODEL,
+            timeout=LLM_TIMEOUT,
+            window_size=LLM_WINDOW_SIZE,
+        )
+    return posture, airflow, rule_scorer, llm_scorer
 
 
-posture_model, airflow_model, fatigue_scorer = load_models()
+posture_model, airflow_model, fatigue_scorer, llm_scorer = load_models()
+
+# Thread pool for non-blocking LLM calls
+_llm_executor = ThreadPoolExecutor(max_workers=1)
+_llm_future: Future | None = None
+_last_llm_result: dict | None = None
 
 
 @st.cache_resource
@@ -79,6 +109,36 @@ enable_voice = st.sidebar.checkbox("音声モニタリング", value=True)
 audio_analyzer = load_audio_analyzer() if enable_voice else None
 if enable_voice and audio_analyzer is None:
     st.sidebar.warning("マイク未検出 — 音声モニタリング無効")
+
+# ---------------------------------------------------------------------------
+# Sidebar — LLM scoring status
+# ---------------------------------------------------------------------------
+st.sidebar.header("LLM疲労判定")
+if llm_scorer is not None:
+    llm_enabled = st.sidebar.checkbox("LLM判定を使用", value=True)
+    if llm_enabled:
+        st.sidebar.caption(f"モデル: {LLM_MODEL} @ {OLLAMA_HOST}")
+    else:
+        st.sidebar.info("ルールベースで動作中")
+else:
+    llm_enabled = False
+    st.sidebar.info("LLM無効 (ENABLE_LLM_SCORING=false)")
+
+# ---------------------------------------------------------------------------
+# Sidebar — robot arm trigger
+# ---------------------------------------------------------------------------
+st.sidebar.header("ロボットアーム")
+trigger_arm = st.sidebar.checkbox("疲労時にアーム起動", value=False)
+if trigger_arm:
+    arm_url = st.sidebar.text_input(
+        "アームサーバーURL", value=ARM_SERVER_URL
+    )
+    arm_threshold = st.sidebar.slider(
+        "発動しきい値", 0.0, 1.0, FATIGUE_ARM_THRESHOLD, 0.05
+    )
+else:
+    arm_url = ARM_SERVER_URL
+    arm_threshold = FATIGUE_ARM_THRESHOLD
 
 # ---------------------------------------------------------------------------
 # Sidebar — optional cloud send
@@ -175,9 +235,16 @@ with col_dash:
     score_placeholder = st.empty()
     posture_placeholder = st.empty()
 
+    st.subheader("🧠 LLM判定")
+    llm_status_placeholder = st.empty()
+    llm_reasoning_placeholder = st.empty()
+
     st.subheader("音声認識")
     voice_text_placeholder = st.empty()
     voice_status_placeholder = st.empty()
+
+    st.subheader("🤖 ロボットアーム")
+    arm_status_placeholder = st.empty()
 
     st.subheader("室内環境 (AI予測)")
     env_placeholder = st.empty()
@@ -201,6 +268,9 @@ last_voice_result: dict | None = None
 last_voice_analyze = 0.0
 cloud_send_interval = 10.0  # seconds
 last_cloud_send = 0.0
+arm_triggered = False
+arm_cooldown = 30.0  # seconds between arm triggers
+last_arm_trigger = 0.0
 
 try:
     while cap.isOpened():
@@ -230,9 +300,35 @@ try:
         # Run posture inference periodically
         if frame_count % INFERENCE_INTERVAL == 0:
             last_posture = posture_model.predict(frame)
-            last_fatigue = fatigue_scorer.compute(
-                last_posture, airflow_result, last_voice_result
-            )
+
+            # --- LLM scoring (async) or rule-based ---
+            if llm_enabled and llm_scorer is not None:
+                global _llm_future, _last_llm_result
+                # Collect result from previous async call
+                if _llm_future is not None and _llm_future.done():
+                    try:
+                        _last_llm_result = _llm_future.result(timeout=0)
+                    except Exception:
+                        pass
+                # Submit new async LLM call if not in-flight
+                if _llm_future is None or _llm_future.done():
+                    _llm_future = _llm_executor.submit(
+                        llm_scorer.score,
+                        last_posture,
+                        airflow_result,
+                        last_voice_result,
+                    )
+                # Use latest LLM result, or fall back to rule-based
+                if _last_llm_result is not None:
+                    last_fatigue = _last_llm_result
+                else:
+                    last_fatigue = fatigue_scorer.compute(
+                        last_posture, airflow_result, last_voice_result
+                    )
+            else:
+                last_fatigue = fatigue_scorer.compute(
+                    last_posture, airflow_result, last_voice_result
+                )
 
             # Update dashboard
             score = last_fatigue["fatigue_score"]
@@ -245,6 +341,44 @@ try:
                 f"**姿勢**: {POSTURE_LABELS_JA.get(last_posture['class'], last_posture['class'])} "
                 f"(信頼度 {last_posture['confidence']:.0%})"
             )
+
+            # LLM status display
+            if last_fatigue.get("llm_used"):
+                llm_status_placeholder.success("✅ LLM判定使用中")
+                reasoning = last_fatigue.get("llm_reasoning", "")
+                if reasoning:
+                    llm_reasoning_placeholder.info(f"💭 {reasoning}")
+            elif llm_enabled:
+                status = last_fatigue.get("llm_status", "pending")
+                llm_status_placeholder.warning(f"⚠ ルールベース (LLM: {status})")
+                llm_reasoning_placeholder.empty()
+            else:
+                llm_status_placeholder.info("ルールベースモード")
+                llm_reasoning_placeholder.empty()
+
+            # --- Robot arm trigger ---
+            now = time.time()
+            if (
+                trigger_arm
+                and score >= arm_threshold
+                and now - last_arm_trigger > arm_cooldown
+            ):
+                last_arm_trigger = now
+                arm_status_placeholder.warning("🦾 飴ちゃん配達中...")
+                try:
+                    requests.post(
+                        f"{arm_url}/trigger",
+                        json={"fatigue_score": score},
+                        timeout=60,
+                    )
+                    arm_status_placeholder.success("✅ 飴ちゃん配達完了!")
+                except requests.RequestException as e:
+                    arm_status_placeholder.error(f"❌ アーム通信エラー: {e}")
+            elif trigger_arm:
+                if score < arm_threshold:
+                    arm_status_placeholder.info(
+                        f"待機中 (スコア {score:.2f} < しきい値 {arm_threshold:.2f})"
+                    )
 
             # Optional cloud send
             now = time.time()

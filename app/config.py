@@ -1,5 +1,6 @@
 """Central configuration: model paths, class labels, normalization parameters."""
 
+import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -74,3 +75,18 @@ NEGATIVE_KEYWORDS: dict[str, float] = {
     "集中できない": 0.6,
     "頭痛い": 0.8,
 }
+
+# ---------------------------------------------------------------------------
+# LLM Fatigue Scorer (Ollama)
+# ---------------------------------------------------------------------------
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:8b")
+LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "5.0"))
+LLM_WINDOW_SIZE = int(os.getenv("LLM_WINDOW_SIZE", "5"))
+ENABLE_LLM_SCORING = os.getenv("ENABLE_LLM_SCORING", "true").lower() == "true"
+
+# ---------------------------------------------------------------------------
+# Robot arm trigger (SO-ARM101)
+# ---------------------------------------------------------------------------
+ARM_SERVER_URL = os.getenv("ARM_SERVER_URL", "http://localhost:8766")
+FATIGUE_ARM_THRESHOLD = float(os.getenv("FATIGUE_ARM_THRESHOLD", "0.7"))

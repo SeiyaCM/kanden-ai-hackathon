@@ -15,6 +15,9 @@ shell_command:
   stackchan_fatigue_speech: 'curl -sS -G --max-time 60 "http://stack-chan.local/speech" --data-urlencode "say=おつかれさまやなぁ。あめちゃんたべぇ"'
   stackchan_lego_forward: 'curl -sS --max-time 10 -X POST -d "ch=0&pwm=7&out=b" "http://stack-chan.local/lego"'
   stackchan_lego_stop: 'curl -sS --max-time 10 -X POST -d "ch=0&pwm=0&out=b" "http://stack-chan.local/lego"'
+  # SO-ARM101 candy delivery trigger (DGX Spark上の arm_server.py)
+  # <DGX_SPARK_IP> はデプロイ環境に応じて固定IPに置き換えること
+  soarm_trigger_candy: 'curl -sS --max-time 60 -X POST -H "Content-Type: application/json" -d "{\"fatigue_score\": {{ states(''sensor.kanden_fatigue'') }}}" "http://<DGX_SPARK_IP>:8766/trigger"'
 
 automation:
   - id: fatigue_below_stackchan_neutral
@@ -39,6 +42,8 @@ automation:
     action:
       - service: shell_command.stackchan_fatigue_speech
       - service: shell_command.stackchan_lego_forward
+      # SO-ARM101 飴ちゃんカゴ配達（並行実行）
+      - service: shell_command.soarm_trigger_candy
       - delay:
           seconds: 15
       - service: shell_command.stackchan_lego_stop
