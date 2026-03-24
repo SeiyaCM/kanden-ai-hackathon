@@ -1,0 +1,14 @@
+# Home Assistant: MQTT センサー（トピック kanden/fatigue を購読）
+# configuration.yaml の mqtt.sensor にマージするか、packages に含めてください。
+#
+# API Gateway → IoT Core から配信される JSON ペイロード:
+#   {"device_id":"...","user_id":"...","timestamp":"...","fatigue_score":0.85,"modalities":{...}}
+# value_template で fatigue_score を抽出します。
+
+mqtt:
+  sensor:
+    - name: "Kanden Fatigue"
+      unique_id: kanden_fatigue_mqtt
+      state_topic: "kanden/fatigue"
+      qos: 1
+      value_template: "{{ value_json.fatigue_score }}"
