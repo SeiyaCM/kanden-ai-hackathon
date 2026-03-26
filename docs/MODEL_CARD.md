@@ -174,6 +174,20 @@ Apache License 2.0
 
 ---
 
+## 引用 / Citation
+
+```bibtex
+@misc{kanden_posture_model_2025,
+  title   = {Posture Classifier: ResNet18-based Engineer Fatigue Posture Detection},
+  author  = {Team NANIWA-Factory},
+  year    = {2025},
+  url     = {https://huggingface.co/SeiyaCM/KandenAiHackathonPostureModel},
+  note    = {Kanden AI Hackathon — Space AI Brain Project}
+}
+```
+
+---
+
 ## 関連リンク / Related Links
 
 - **GitHub**: [SeiyaCM/kanden-ai-hackathon](https://github.com/SeiyaCM/kanden-ai-hackathon)
