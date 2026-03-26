@@ -78,6 +78,22 @@
 | ファイル | `model/airflow/airflow_surrogate.onnx` |
 | HuggingFace | [SeiyaCM/KandenAiHackathonAirflowModel](https://huggingface.co/SeiyaCM/KandenAiHackathonAirflowModel) |
 
+### ロボットアーム模倣学習モデル — ACT (Candy Basket Delivery)
+
+| 項目 | 詳細 |
+|------|------|
+| アルゴリズム | ACT (Action Chunking with Transformers) |
+| Vision Backbone | ResNet18 (ImageNet pretrained) |
+| パラメータ数 | 52M (51,597,190) |
+| フレームワーク | [LeRobot](https://github.com/huggingface/lerobot) v0.4.4 |
+| 学習手法 | 模倣学習（テレオペレーションデータから学習） |
+| 学習ステップ | 100,000 steps |
+| 最終 loss | 0.031 |
+| 入力 | 関節角度 (6DoF) + 俯瞰カメラ画像 (640×480) + グリッパーカメラ画像 (640×480) |
+| 出力 | 6自由度アクション指令値 |
+| 推論FPS | 30Hz (CUDA) — 学習時FPSと一致させることが成功率に直結 |
+| HuggingFace | [himorishige/act_so101_candy_basket](https://huggingface.co/himorishige/act_so101_candy_basket) |
+
 ---
 
 ## 📊 学習データ / Datasets
@@ -105,6 +121,21 @@
 | 生成方法 | OpenFOAM buoyantSimpleFoam CFDシミュレーション |
 | パラメータ | AC風速, AC温度, 窓開閉, 換気量, レイアウト |
 | ライセンス | MIT |
+
+### ロボットアーム テレオペレーションデータセット
+
+[himorishige/so101_candy_basket](https://huggingface.co/datasets/himorishige/so101_candy_basket)
+
+| 項目 | 詳細 |
+|------|------|
+| エピソード数 | 50 |
+| 総フレーム数 | 29,186 |
+| FPS | 30 |
+| フォーマット | LeRobot v3.0（Parquet + MP4） |
+| 収集方法 | テレオペレーション（SO-ARM101 リーダー・フォロワー構成） |
+| カメラ | 俯瞰（Logitech C920）+ グリッパー（InnoMaker U20CAM-1080p） |
+| タスク | 飴ちゃん入りカゴを掴んでユーザーへ運ぶ |
+| ライセンス | Apache-2.0 |
 
 ---
 
