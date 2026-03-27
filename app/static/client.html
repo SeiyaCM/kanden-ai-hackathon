@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>空間AIブレイン — 疲労度モニター</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, sans-serif; background: #1a1a2e; color: #eee; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h1 { text-align: center; margin-bottom: 16px; font-size: 1.3em; }
+  h1 span { color: #ffd700; }
+
+  .layout { display: grid; grid-template-columns: 1fr 340px; gap: 16px; }
+
+  /* Video area */
+  .video-area {
+    position: relative; border-radius: 12px; overflow: hidden; background: #000;
+  }
+  video { width: 100%; display: block; transform: scaleX(-1); }
+  canvas { display: none; }
+
+  .overlay {
+    position: absolute; top: 12px; right: 12px;
+    background: rgba(0,0,0,0.75); padding: 10px 16px;
+    border-radius: 8px; font-size: 1.1em; font-weight: bold;
+    min-width: 160px; text-align: center;
+  }
+  .overlay.good { border: 2px solid #4caf50; color: #4caf50; }
+  .overlay.slouch, .overlay.chin_rest { border: 2px solid #ff5252; color: #ff5252; animation: pulse 1s infinite; }
+  .overlay.stretch { border: 2px solid #ffc107; color: #ffc107; }
+  .overlay.waiting { border: 2px solid #888; color: #888; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+
+  /* Dashboard panel */
+  .dashboard { display: flex; flex-direction: column; gap: 12px; }
+  .panel {
+    background: #16213e; border-radius: 10px; padding: 14px;
+  }
+  .panel h3 { font-size: 0.85em; color: #aaa; margin-bottom: 8px; }
+
+  /* Score big display */
+  .big-score { font-size: 2.8em; font-weight: bold; text-align: center; }
+  .big-score.low { color: #4caf50; }
+  .big-score.mid { color: #ffc107; }
+  .big-score.high { color: #ff5252; }
+
+  /* Meters */
+  .meter { margin-bottom: 6px; }
+  .meter label { font-size: 0.75em; color: #999; }
+  .meter .bar { height: 6px; background: #333; border-radius: 3px; margin-top: 3px; overflow: hidden; }
+  .meter .bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s, background 0.3s; }
+  .meter .value { font-size: 0.85em; font-weight: bold; float: right; margin-top: -18px; }
+
+  /* LLM panel */
+  .llm-reasoning {
+    font-size: 0.85em; color: #ccc; background: #0f0f23;
+    border-radius: 6px; padding: 8px; min-height: 32px;
+    border-left: 3px solid #7c4dff;
+  }
+  .llm-status { font-size: 0.75em; color: #888; margin-top: 4px; }
+
+  /* Voice panel */
+  .transcript {
+    font-size: 0.85em; color: #ccc; background: #0f0f23;
+    border-radius: 6px; padding: 8px; min-height: 24px;
+  }
+  .keyword-alert { color: #ff5252; font-weight: bold; font-size: 0.85em; margin-top: 4px; }
+
+  /* Controls */
+  .controls { display: flex; gap: 10px; justify-content: center; margin: 12px 0; }
+  button {
+    padding: 8px 20px; border: none; border-radius: 8px;
+    font-size: 0.95em; cursor: pointer; transition: 0.2s;
+  }
+  button:hover { transform: scale(1.05); }
+  #btn-start { background: #2196f3; color: #fff; }
+  #btn-stop { background: #ff5252; color: #fff; }
+
+  /* Status row */
+  .status-row {
+    display: flex; gap: 16px; justify-content: center;
+    margin-bottom: 10px; font-size: 0.8em; color: #aaa;
+  }
+  .status-row span { display: flex; align-items: center; gap: 4px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot.on { background: #4caf50; }
+  .dot.off { background: #555; }
+
+  /* Log */
+  .log {
+    background: #0f0f23; border-radius: 8px; padding: 8px;
+    max-height: 100px; overflow-y: auto; font-family: monospace;
+    font-size: 0.75em; color: #666; margin-top: 8px;
+  }
+  .log .entry { margin-bottom: 1px; }
+  .log .entry.warn { color: #ff5252; }
+  .log .entry.info { color: #4caf50; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🍬 <span>空間AIブレイン</span> — 疲労度モニター</h1>
+
+  <div class="status-row">
+    <span><span class="dot" id="dot-video"></span> カメラ</span>
+    <span><span class="dot" id="dot-audio"></span> マイク</span>
+    <span><span class="dot" id="dot-ws"></span> サーバー</span>
+    <span id="fps-display">-- fps</span>
+    <span id="latency-display">-- ms</span>
+  </div>
+
+  <div class="layout">
+    <!-- Left: video -->
+    <div>
+      <div class="video-area">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas"></canvas>
+        <div class="overlay waiting" id="score-overlay">待機中</div>
+      </div>
+      <div class="controls">
+        <button id="btn-start">▶ 開始</button>
+        <button id="btn-stop" style="display:none">⏹ 停止</button>
+      </div>
+    </div>
+
+    <!-- Right: dashboard -->
+    <div class="dashboard">
+      <div class="panel">
+        <h3>総合疲労スコア</h3>
+        <div class="big-score low" id="fatigue-score">0.00</div>
+      </div>
+
+      <div class="panel">
+        <h3>姿勢分類</h3>
+        <div class="meter"><label>良好 (good)</label><div class="bar"><div class="bar-fill" id="bar-good" style="width:0%"></div></div><div class="value" id="val-good">-</div></div>
+        <div class="meter"><label>猫背 (slouch)</label><div class="bar"><div class="bar-fill" id="bar-slouch" style="width:0%"></div></div><div class="value" id="val-slouch">-</div></div>
+        <div class="meter"><label>頬杖 (chin_rest)</label><div class="bar"><div class="bar-fill" id="bar-chin_rest" style="width:0%"></div></div><div class="value" id="val-chin_rest">-</div></div>
+        <div class="meter"><label>ストレッチ</label><div class="bar"><div class="bar-fill" id="bar-stretch" style="width:0%"></div></div><div class="value" id="val-stretch">-</div></div>
+      </div>
+
+      <div class="panel">
+        <h3>🧠 LLM判定</h3>
+        <div class="llm-reasoning" id="llm-reasoning">待機中...</div>
+        <div class="llm-status" id="llm-status"></div>
+      </div>
+
+      <div class="panel">
+        <h3>🎙 音声認識</h3>
+        <div class="transcript" id="transcript">（音声なし）</div>
+        <div class="keyword-alert" id="keyword-alert"></div>
+      </div>
+
+      <div class="panel">
+        <h3>スコア内訳</h3>
+        <div class="meter"><label>姿勢</label><div class="bar"><div class="bar-fill" id="bar-posture" style="width:0%"></div></div><div class="value" id="val-posture">-</div></div>
+        <div class="meter"><label>音声</label><div class="bar"><div class="bar-fill" id="bar-voice" style="width:0%"></div></div><div class="value" id="val-voice">-</div></div>
+        <div class="meter"><label>環境</label><div class="bar"><div class="bar-fill" id="bar-env" style="width:0%"></div></div><div class="value" id="val-env">-</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('score-overlay');
+const logEl = document.getElementById('log');
+
+let wsVideo = null, wsAudio = null;
+let mediaStream = null, audioRecorder = null;
+let sendInterval = null, isRunning = false;
+let fpsFrames = 0, lastFpsTime = Date.now();
+
+const SERVER = location.host;
+const POSTURE_LABELS = { good: '良好', slouch: '猫背', chin_rest: '頬杖', stretch: 'ストレッチ' };
+
+function addLog(msg, cls = '') {
+  const el = document.createElement('div');
+  el.className = 'entry ' + cls;
+  el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logEl.prepend(el);
+  if (logEl.children.length > 40) logEl.lastChild.remove();
+}
+
+function setDot(id, on) {
+  document.getElementById(id).className = 'dot ' + (on ? 'on' : 'off');
+}
+
+function barColor(v) {
+  if (v < 0.3) return '#4caf50';
+  if (v < 0.6) return '#ffc107';
+  return '#ff5252';
+}
+
+function updateMeter(id, value) {
+  const bar = document.getElementById('bar-' + id);
+  const val = document.getElementById('val-' + id);
+  if (!bar || !val) return;
+  const pct = Math.min(100, Math.round(value * 100));
+  bar.style.width = pct + '%';
+  bar.style.background = barColor(value);
+  val.textContent = value.toFixed(2);
+}
+
+async function startMedia() {
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480, facingMode: 'user' },
+      audio: true,
+    });
+    video.srcObject = mediaStream;
+    setDot('dot-video', true);
+    setDot('dot-audio', true);
+    addLog('カメラ・マイク取得完了', 'info');
+
+    audioRecorder = new MediaRecorder(mediaStream, { mimeType: 'audio/webm;codecs=opus' });
+    audioRecorder.ondataavailable = (e) => {
+      if (wsAudio && wsAudio.readyState === WebSocket.OPEN && e.data.size > 0) {
+        wsAudio.send(e.data);
+      }
+    };
+  } catch (err) {
+    addLog('メディア取得失敗: ' + err.message, 'warn');
+  }
+}
+
+function connectWebSockets() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+
+  wsVideo = new WebSocket(`${proto}://${SERVER}/ws/video`);
+  wsVideo.onopen = () => { setDot('dot-ws', true); addLog('Video WS 接続', 'info'); };
+  wsVideo.onclose = () => { setDot('dot-ws', false); addLog('Video WS 切断'); };
+  wsVideo.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type !== 'result') return;
+
+    const posture = msg.posture;
+    const fatigue = msg.fatigue;
+    const cls = posture.class;
+    const label = POSTURE_LABELS[cls] || cls;
+    const conf = posture.confidence;
+    const score = fatigue.fatigue_score;
+
+    // Overlay
+    overlay.textContent = `${label} ${(conf * 100).toFixed(0)}%`;
+    overlay.className = 'overlay ' + cls;
+
+    // Fatigue big score
+    const scoreEl = document.getElementById('fatigue-score');
+    scoreEl.textContent = score.toFixed(2);
+    scoreEl.className = 'big-score ' + (score < 0.3 ? 'low' : score < 0.6 ? 'mid' : 'high');
+
+    // Posture class probabilities
+    if (posture.probabilities) {
+      for (const [k, v] of Object.entries(posture.probabilities)) {
+        updateMeter(k, v);
+      }
+    }
+
+    // Score breakdown
+    updateMeter('posture', fatigue.posture_score || 0);
+    updateMeter('voice', fatigue.voice_score || 0);
+    updateMeter('env', fatigue.environment_score || 0);
+
+    // LLM reasoning
+    const reasonEl = document.getElementById('llm-reasoning');
+    const statusEl = document.getElementById('llm-status');
+    if (fatigue.llm_used) {
+      reasonEl.textContent = fatigue.llm_reasoning || '(判定中...)';
+      statusEl.textContent = '✅ LLM判定使用中';
+    } else {
+      reasonEl.textContent = '(ルールベース)';
+      statusEl.textContent = '⚠ LLM未接続';
+    }
+
+    // FPS
+    fpsFrames++;
+    const now = Date.now();
+    if (now - lastFpsTime > 1000) {
+      document.getElementById('fps-display').textContent =
+        Math.round(fpsFrames / ((now - lastFpsTime) / 1000)) + ' fps';
+      fpsFrames = 0;
+      lastFpsTime = now;
+    }
+    document.getElementById('latency-display').textContent = msg.inference_ms + ' ms';
+  };
+
+  wsAudio = new WebSocket(`${proto}://${SERVER}/ws/audio`);
+  wsAudio.binaryType = 'arraybuffer';
+  wsAudio.onopen = () => addLog('Audio WS 接続', 'info');
+  wsAudio.onclose = () => addLog('Audio WS 切断');
+  wsAudio.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'voice_result') {
+      document.getElementById('transcript').textContent =
+        msg.transcript || '（音声なし）';
+      const alertEl = document.getElementById('keyword-alert');
+      if (msg.negative_detected) {
+        alertEl.textContent = '⚠ ネガティブ検出: ' + msg.matched_keywords.join(', ');
+      } else {
+        alertEl.textContent = '';
+      }
+    }
+  };
+}
+
+function captureAndSend() {
+  if (!wsVideo || wsVideo.readyState !== WebSocket.OPEN) return;
+  if (video.videoWidth === 0) return;
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.drawImage(video, 0, 0);
+  const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+  wsVideo.send(JSON.stringify({ type: 'frame', frame: base64 }));
+}
+
+document.getElementById('btn-start').onclick = () => {
+  if (!wsVideo) connectWebSockets();
+  const waitAndStart = () => {
+    if (wsVideo.readyState !== WebSocket.OPEN) { setTimeout(waitAndStart, 100); return; }
+    isRunning = true;
+    document.getElementById('btn-start').style.display = 'none';
+    document.getElementById('btn-stop').style.display = '';
+    addLog('検知開始', 'info');
+    sendInterval = setInterval(captureAndSend, 200);  // ~5fps
+    if (audioRecorder && audioRecorder.state === 'inactive') audioRecorder.start(100);
+  };
+  waitAndStart();
+};
+
+document.getElementById('btn-stop').onclick = () => {
+  isRunning = false;
+  if (sendInterval) { clearInterval(sendInterval); sendInterval = null; }
+  if (audioRecorder && audioRecorder.state === 'recording') audioRecorder.stop();
+  document.getElementById('btn-start').style.display = '';
+  document.getElementById('btn-stop').style.display = 'none';
+  overlay.textContent = '停止';
+  overlay.className = 'overlay waiting';
+  addLog('検知停止');
+};
+
+startMedia();
+</script>
+</body>
+</html>
